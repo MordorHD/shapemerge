@@ -13,11 +13,22 @@
 enum {
 	EV_DRAW,
 	EV_TICK,
+	EV_KEYDOWN,
+	EV_KEYUP,
+	EV_MAX,
 };
 typedef struct event {
 	int id;
 	union {
 		float ticks;
+		struct {
+			int vkCode;
+			int repeat;
+		};
+		struct {
+			void *data1;
+			void *data2;
+		};
 	};
 } ev_t;
 
@@ -53,15 +64,10 @@ typedef struct entity {
 	};
 } e_t;
 
-void e_init(void);
-
 e_t *e_create(const char *className);
 void e_add(e_t *e);
-
 bool e_checkcollision(e_t *e, float ticks);
-
-void e_tickall(float tick);
-void e_drawall(SDL_Renderer *r);
+void e_dispatch(ev_t *ev);
 
 typedef struct entitylist {
 	e_t **entities;

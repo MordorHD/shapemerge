@@ -49,12 +49,9 @@ struct {
 	e_t **d;
 	int n, sz;
 	qt_t qt;
-} Entities;
-
-void e_init(void)
-{
-	Entities.qt.rect = (Rect2) { 0, 0, 640, 480 };
-}
+} Entities = {
+	NULL, 0, 0, { .isParent = NULL, .rect = (Rect2) { -1e10f, -1e10f, 2e10f, 2e10f } }
+};
 
 void e_add(e_t *e)
 {
@@ -69,7 +66,7 @@ void e_add(e_t *e)
 	qt_add(&Entities.qt, e);
 }
 
-void dispatch(ev_t *ev)
+void e_dispatch(ev_t *ev)
 {
 	e_t **es, *e;
 	int n;
@@ -81,26 +78,6 @@ void dispatch(ev_t *ev)
 	}
 }
 
-void e_tickall(float ticks)
-{
-	ev_t ev;
-
-	ev.id = EV_TICK;
-	ev.ticks = ticks;
-	dispatch(&ev);
-}
-
-void e_drawall(SDL_Renderer *r)
-{
-	ev_t ev;
-
-	ev.id = EV_DRAW;
-	dispatch(&ev);
-}
-
-#define FLOATEQUAL(a, b) (fabs((a) - (b)) < 0.0001)
-
-// true if e moved
 bool e_checkcollision(e_t *e, float ticks)
 {
 	// Step 1: Get velocity box
@@ -235,7 +212,7 @@ bool e_checkcollision(e_t *e, float ticks)
 			e->x = xr.x - e->w;
 			e->flags |= ENTITY_WALLED;
 		}
-		e->vx = vx = 0.0f;
+		e->vx = 0.0f;
 	}
 	if(yCnt)
 	{
@@ -253,7 +230,7 @@ bool e_checkcollision(e_t *e, float ticks)
 			e->flags |= ENTITY_GROUNDED;
 		}
 		//if(FLOATEQUAL(prev, e->velocity.y))
-		e->vy = vy = 0.0f;
+		e->vy = 0.0f;
 		//else
 			//vy = e->velocity.y * (1.0f - entryTime);
 	}
