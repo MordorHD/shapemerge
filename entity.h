@@ -7,8 +7,8 @@
 #include <SDL2/SDL_render.h>
 #include <SDL2/SDL_rect.h>
 
-#define Vec2 SDL_FPoint
-#define Rect2 SDL_FRect
+#define v_t SDL_FPoint
+#define r_t SDL_FRect
 
 enum {
 	EV_DRAW,
@@ -54,25 +54,31 @@ typedef struct entity {
 			float x, y;
 			float w, h;
 		};
-		Rect2 rect;
+		r_t bounds;
 	};
+	r_t *rects;
+	int nRects;
 	union {
 		struct {
 			float vx, vy;
 		};
-		Vec2 vel;
+		v_t vel;
 	};
 } e_t;
 
 e_t *e_create(const char *className);
+void e_setrect(e_t *e, const r_t *r);
+void e_addrect(e_t *e, const r_t *r);
+void e_setvel(e_t *e, const v_t *v);
+void e_translate(e_t *e, float x, float y);
 void e_add(e_t *e);
-bool e_checkcollision(e_t *e, float ticks);
 void e_dispatch(ev_t *ev);
+bool e_checkcollision(e_t *e, float ticks);
 
 typedef struct entitylist {
 	e_t **entities;
 	int nEntities, szEntities;
-	Rect2 rect;
+	r_t bounds;
 } el_t;
 
 #define el_init(el, r, sz) ({ \
@@ -81,7 +87,7 @@ typedef struct entitylist {
 		_el->entities = _sz ? malloc(_sz * sizeof*_el->entities) : 0; \
 		_el->szEntities = _sz; \
 		_el->nEntities = 0; \
-		_el->rect = (r); \
+		_el->bounds = (r); \
 		1; })
 #define el_discard(el) ({ free((el)->entities); 1; })
 void el_add(el_t *el, e_t *e);
@@ -99,13 +105,38 @@ typedef struct quadtree {
 			int nEntities, szEntities;
 		};
 	};
-	Rect2 rect;
+	r_t bounds;
 } qt_t;
 
-int qt_add(qt_t *qt, e_t *e);
-int qt_remove(qt_t *qt, e_t *e);
-int qt_subdivide(qt_t *qt);
-int qt_collect(const qt_t *qt, el_t *el);
-e_t *qt_collectfirst(const qt_t *qt, const Rect2 *rect);
+void qt_add(qt_t *qt, e_t *e);
+void qt_remove(qt_t *qt, e_t *e);
+bool qt_subdivide(qt_t *qt);
+void qt_collect(const qt_t *qt, el_t *el);
+e_t *qt_collectfirst(const qt_t *qt, const r_t *bounds);
+
+#define CAM_LEFT 0
+#define CAM_HCENTER (1 << 0)
+#define CAM_RIGHT (1 << 1)
+#define CAM_TOP 0
+#define CAM_VCENTER (1 << 2)
+#define CAM_BOTTOM (1 << 3)
+typedef struct camera {
+    // camera position
+    float x;
+    float y;
+    // camera scaling
+    float sx;
+    float sy;
+    // constraints
+    float cstr_l;
+    float cstr_t;
+    float cstr_r;
+    float cstr_b;
+    // camera align
+    int flags;
+    struct {
+        float x, y;
+    } *target;
+} cam_t;
 
 #endif

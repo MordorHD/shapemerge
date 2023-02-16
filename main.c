@@ -22,11 +22,20 @@ const Uint8 *keys;
 void player_draw(e_t *player)
 {
 	SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-	SDL_RenderDrawRectF(renderer, &player->rect);
+	for(int i = 0; i < player->nRects; i++)
+		SDL_RenderDrawRectF(renderer, player->rects + i);
 }
 
 int player_proc(e_t *player, ev_t *ev)
 {
+#define G 1780.0f // gravity
+#define AX 1200.0f // x acceleration
+#define CX 8.8f // turning on floor factor
+#define FAX 0.004f // air friction (the closer the value to one, the higher the friction)
+#define FX 0.1f // floor friction (...)
+#define THRESX 40.0f // if no key is pressed and the player has a velocity less than this, the player stops
+#define JY (-500.0f) // jumping force
+#define JUMP_CUT 0.45f	
 	float dt;
 	float ax, ay; // accumulated forces
 
@@ -38,7 +47,8 @@ int player_proc(e_t *player, ev_t *ev)
 
 	if(ev->id == EV_KEYUP)
 	{
-		//if(ev->vkCode == SDLK_UP && )
+		if(ev->vkCode == SDLK_SPACE && player->vel.y < 0)
+			player->vel.y *= JUMP_CUT;
 		return 0;	
 	}
 
@@ -47,14 +57,6 @@ int player_proc(e_t *player, ev_t *ev)
 
 	dt = ev->ticks;
 
-#define G 1780.0f // gravity
-#define AX 1200.0f // x acceleration
-#define CX 8.8f // turning on floor factor
-#define FAX 0.004f // air friction (the closer the value to one, the higher the friction)
-#define FX 0.1f // floor friction (...)
-#define THRESX 40.0f // if no key is pressed and the player has a velocity less than this, the player stops
-#define JY (-500.0f) // jumping force
-	
 	ax = 0;
 	ay = 0;
 
@@ -84,8 +86,7 @@ int player_proc(e_t *player, ev_t *ev)
 	player->vel.x += ax;
 	player->vel.y += ay;
 	e_checkcollision(player, dt);
-	player->rect.x += player->vel.x * dt;
-	player->rect.y += player->vel.y * dt;
+	e_translate(player, player->vel.x * dt, player->vel.y * dt);
 	return 0;
 }
 
@@ -95,7 +96,8 @@ int box_proc(e_t *box, ev_t *ev)
 	{
 	case EV_DRAW:
 		SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255);
-		SDL_RenderDrawRectF(renderer, &box->rect);
+		for(int i = 0; i < box->nRects; i++)
+			SDL_RenderDrawRectF(renderer, box->rects + i);
 		break;
 	}
 	return 0;
@@ -104,12 +106,13 @@ int box_proc(e_t *box, ev_t *ev)
 int main(int argc, char *argv[])
 {
 	Uint32 custEventId;
+	cam_t cam;
+	e_t *e;
 	Uint32 start, end;
 	bool running;
 	SDL_Event event;
 	ev_t ev;
-
-	e_t *e;
+	int w, h;
 
 	SDL_Init(SDL_INIT_VIDEO);
 
@@ -125,13 +128,30 @@ int main(int argc, char *argv[])
 	for(int i = 0; i < sizeof(classes)/sizeof(*classes); i++)
 		ec_add(classes + i);
 
+	cam.x = 0.0f;
+	cam.y = 0.0f;
+	cam.cstr_l = 0;
+	cam.cstr_t = 2e6;
+	cam.cstr_r = 2e6;
+	cam.cstr_b = 480;
+	cam.sx = 1.0f;
+	cam.sy = 1.0f;
+	cam.flags = CAM_HCENTER | CAM_VCENTER;
+
 	e = e_create("Player");
-	e->vel = (Vec2) { 0.0, 0.0 };
-	e->rect = (Rect2) { 30.0, 10.0, 20.0, 50.0 };
+	e_setrect(e, &(r_t) { 30.0f, 10.0f, 20.0f, 50.0f });
+	e_addrect(e, &(r_t) { 10.0f, 60.0f, 20.0f, 20.0f });
+	e_addrect(e, &(r_t) { 50.0f, 60.0f, 20.0f, 20.0f });
+	printf("%f, %f, %f, %f\n", e->x, e->y, e->w, e->h);
 	e_add(e);
 
+	cam.target = &e->bounds;
+
 	e = e_create("Box");
-	e->rect = (Rect2) { 0, 460, 10040.0f, 20 };
+	e_setrect(e, &(r_t) { 0.0f, 460.0f, 1e6f, 20.0f });
+	for(int i = 0; i < 100; i++)
+		e_addrect(e, &(r_t) { 100.0f + i * 100.0f, 440.0f, 19.0f, 20.0f });
+	e_addrect(e, &(r_t) { 80.0f, 400.0f, 100.0f, 10.0f });
 	e_add(e);
 
 	keys = SDL_GetKeyboardState(NULL);
@@ -155,6 +175,12 @@ int main(int argc, char *argv[])
 				ev.vkCode = event.key.keysym.sym;
 				e_dispatch(&ev);
 				break;
+			case SDL_MOUSEBUTTONDOWN:
+				e = e_create("Box");
+				e_setrect(e, &(r_t) { event.button.x - 120, event.button.y - 20,
+					   240, 40 });
+				e_add(e);
+				break;
 			case SDL_QUIT:
 				running = 0;
 				break;
@@ -172,6 +198,43 @@ int main(int argc, char *argv[])
 		ev.id = EV_TICK;
 		ev.ticks = (end - start) / 1e3f;
 		e_dispatch(&ev);
+		SDL_GetWindowSize(window, &w, &h);
+		if(cam.target)
+        {
+			double tx, ty;
+			int x_align, y_align;
+			int l, t, r, b, drl, dbt;
+			float tu;
+			tx = cam.target->x * cam.sx;
+			ty = cam.target->y * cam.sy;
+			x_align = (cam.flags & CAM_HCENTER) ? w / 2 : (cam.flags & CAM_RIGHT) ? w : 0;
+			y_align = (cam.flags & CAM_VCENTER) ? h / 2 : (cam.flags & CAM_BOTTOM) ? h : 0;
+			l = cam.cstr_l * cam.sx;
+			r = cam.cstr_r * cam.sx;
+			t = cam.cstr_t * cam.sy;
+			b = cam.cstr_b * cam.sy;
+			drl = r + l;
+			dbt = b + t;
+			tx = drl <= w ? 0
+				: -tx - x_align >= l - w ? -l
+				: x_align + tx > r ? r - w
+				: tx - x_align;
+			ty = dbt <= h ? 0
+				: -ty - y_align >= t - h ? -t
+				: y_align + ty > b ? b - h
+				: ty - y_align;
+			tu = 2.0f * ev.ticks;
+			tu = fmin(tu, 1.0f);
+            cam.x += (tx - cam.x * cam.sx) * tu;
+            cam.y += (ty - cam.y * cam.sy) * tu;
+        }
+		SDL_Rect vp;
+		vp.x = -cam.x;
+		vp.y = -cam.y;
+		vp.w = w + cam.x;
+		vp.h = h + cam.y;
+		SDL_RenderSetViewport(renderer, &vp);
+		SDL_RenderSetScale(renderer, cam.sx, cam.sy);
 		start = end;
 		SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
 		SDL_RenderClear(renderer);
